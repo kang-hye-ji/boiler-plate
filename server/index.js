@@ -6,6 +6,7 @@ const cookieParser=require('cookie-parser');
 
 const config = require('./config/key');
 
+const {auth}=require('./middleware/auth')
 const {User} = require("./models/User");
 
 
@@ -24,14 +25,19 @@ mongoose.connect( config.mongoURI,{
 app.get('/', (req, res) => res.send('Hello World! 새해복 많이 받으세요'))
 
 
+app.get('/api/hello', (req,res)=>{
+    res.send("안녕하세요~")
+})
+
+
 //아래는 회원가입(register)을 위한 router
-app.post('/register',(req, res) => {
+app.post('/api/users/register',(req, res) => {
     //회원가입할 때 필요한 정보들을 client에서 가져오면
     //그것들을 데이터베이스에 넣어준다.
     const user = new User(req.body)
     //user 정보를 req.body에 들어갈 수 있도록 해준다. 이는 body-parser가 있어서 가능한거다.
 
-    user.save((err,userInfo)=>{
+    user.save((err, userInfo)=>{
         if(err) return res.json({success:false, err})
         //에러가 있을 경우, json 형식으로 성공하지 못했다고 클라이언트에게 전달해준다.
         //에러메세지도 함께 준다.
@@ -44,9 +50,9 @@ app.post('/register',(req, res) => {
 })
 
 // 로그인을 위한
-app.post('/login', (req, res) => {
+app.post('/api/users/login', (req, res) => {
     //요청된 이메일(아이디)을 데이터베이스에 있는지 찾는다.
-    User.findOne({email:req.body.email},(err,user) => {   //findeOne : mongoDB에서 제공하는 method
+    User.findOne({email:req.body.email},(err,user) => {   //findOne : mongoDB에서 제공하는 method
         if(!user){
             return res.json({
                 loginSuccess:false,
@@ -66,8 +72,34 @@ app.post('/login', (req, res) => {
                 // 토큰을 저장한다.  어디에?  > 쿠키, 로컬스토리지 등.. (개발자 툴, application에서 확인가능)
                 res.cookie("x_auth",user.token)
                 .status(200)
-                json({loginSuccess:true, userId:user._id})
+                .json({loginSuccess:true, userId:user._id})
             })
+        })
+    })
+})
+
+//엔드포인트에서 request를 받은 후에 > 미들웨어(중간에서 뭘 해주는 것) > 콜백function(req,res)을 함. 
+app.get('/api/users/auth', auth, (req,res)=>{
+    //여기까지 미들웨어를 통과해 왔다는 얘기는 Authentication이 True라는 말.
+    res.status(200).json({
+        _id:req.user._id,   // ./middleware/auth.js 에서 req.user=user 했기 때문에 가능한 것
+        isAdmiin: req.user.role === 0 ? false : true,   //관리자인가? : role이 0이면 false, 아니면 true
+        isAuth:true,
+        email:req.user.email,
+        name:req.user.name,
+        lastname:req.user.lastname,
+        role:req.user.role,
+        image:req.user.image
+    })
+})
+
+app.get('/api/users/logout', auth, (req,res)=>{
+    User.findOneAndUpdate({_id:req.user._id},   //미들웨어 auth에서 user._id를 가져와 찾는다.
+    {token:""},   // : 두번째 object / 토큰을 지워준다.
+    (err,user)=>{
+        if(err) return res.json({success:false, err});
+        return res.status(200).send({
+            success:true
         })
     })
 })
